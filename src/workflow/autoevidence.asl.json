@@ -1,0 +1,36 @@
+{
+  "Comment": "Simple evidence update workflow to aide in operations and maintenance",
+  "StartAt": "LookUpTheControl",
+  "States": {
+    "LookUpTheControl": {
+      "Type": "Task",
+      "Resource": "${AssessmentSearchArn}",
+      "Next": "Continue"
+    },
+    "Continue": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.statusCode",
+          "NumericEquals": 200,
+          "Next": "UpdateAuditManager"
+        }
+      ],
+      "Default": "NotifyViaSnS"
+    },
+    "UpdateAuditManager": {
+      "Type": "Task",
+      "Resource": "${AssessmentUpdateArn}",
+      "Next": "NotifyViaSnS"
+    },
+    "NotifyViaSnS": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "Message.$": "$.szMsg",
+        "TopicArn": "${SNSArn}"
+      },
+      "End": true
+    }
+  }
+}

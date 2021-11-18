@@ -1,0 +1,20 @@
+{
+    "name": "autoevidence",
+    "description": "For populating manual audit manager controls with evidence in s3 auto-magiclly",
+    "version": "0.0.1",
+    "private": true,
+    "dependencies": {
+        "aws-sdk": "^3.40.0",
+        "lambda-multipart-parser":"^1.0.1",
+        "lambda-multipart":"^1.0.2",
+        "uuid": "^8.3.2"
+    },
+    "devDependencies": {
+        "aws-sdk": "^2.815.0",
+        "jest": "^26.6.3"
+    },
+    "scripts": {
+        "test": "jest --roots __tests__/unit",
+        "integ-test": "jest --roots __tests__/integration"
+    }
+}

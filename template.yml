@@ -1,0 +1,219 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  autoevidence
+
+# Transform section specifies one or more macros that AWS CloudFormation uses to process your template
+# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/transform-section-structure.html
+Transform:
+  - AWS::Serverless-2016-10-31
+Parameters:
+  paramBucketName:
+    Type: String
+    Description: This is the bucket where you put your documentation and evidence
+  paramUseIAMwithGateway:
+    Type: String
+    Description: Required AWS IAM authentication to use API Gateway
+    Default: NONE
+    AllowedValues:
+      - NONE
+      - AWS_IAM
+
+
+Resources:
+  #### Lambda Functions
+  AutoAuditEvidenceLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/controls_updater.lambdaHandler
+      Runtime: nodejs14.x
+      MemorySize: 128
+      Timeout: 100
+      Description: A Lambda function that adds evidence to manual control item.
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - auditmanager:Get*
+                - auditmanager:List*
+                - auditmanager:BatchImportEvidenceToAssessmentControl
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - kms:Describe*
+                - kms:Decrypt
+                - kms:Encrypt
+                - kms:ListKeys
+              Resource: !GetAtt KMSevidenceContent.Arn
+            - Effect: Allow
+              Action:
+                - s3:Get*
+                - s3:List*
+              Resource:
+                [!GetAtt S3Bucket.Arn, !Sub "arn:aws:s3:::${S3Bucket}/*"]
+
+  AssessmentlistLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/search_assessments.lambdaHandler
+      Runtime: nodejs14.x
+      MemorySize: 128
+      Timeout: 100
+      Description: A Lambda function that just lists asssessments.
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - auditmanager:Get*
+                - auditmanager:List*
+              Resource: "*"
+
+  EventCaptureFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/api.handler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          envStateMachineArn: !Ref AutoEvidenceStateMachine
+          envStorageBucketName: !Ref S3Bucket
+
+      MemorySize: 128
+      Timeout: 100
+      Description: A Lambda function that processes api Event.
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /
+            Method: post
+            RestApiId:
+              Ref: ApiGatewayApi
+
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - KMSEncryptPolicy:
+            KeyId: !Ref KMSevidenceContent
+        - S3WritePolicy:
+            BucketName: !Ref S3Bucket
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - states:DescribeStateMachine
+                - states:StartExecution
+                - states:ListExecutions
+              Resource: !Ref AutoEvidenceStateMachine
+
+
+  #### API
+
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors: "'*'"
+      BinaryMediaTypes:
+        - multipart/form-data
+      Auth:
+        ApiKeyRequired: true
+        DefaultAuthorizer: !Ref paramUseIAMwithGateway
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          Description: Usage plan for this API
+          Quota:
+            Limit: 500
+            Period: MONTH
+          Throttle:
+            BurstLimit: 100
+            RateLimit: 50
+
+  #### State Machine
+  AutoEvidenceStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: src/workflow/autoevidence.asl.json
+      DefinitionSubstitutions:
+        AssessmentSearchArn: !GetAtt AssessmentlistLambdaFunction.Arn
+        AssessmentUpdateArn: !GetAtt AutoAuditEvidenceLambdaFunction.Arn
+        SNSArn: !Ref SNSTopic
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AssessmentlistLambdaFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AutoAuditEvidenceLambdaFunction
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SNSTopic.TopicName
+
+  #### Regular CloudFormation
+
+### Managed IAM Policy for IAM protected API Gateway
+  ApiIAMPprotectPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Policy to allow invokation of IAM protected API
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "execute-api:Invoke"
+            Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayApi}/*"
+
+
+  ### KMS
+
+  KMSevidenceContent:
+    Type: "AWS::KMS::Key"
+    Properties:
+      Description: Key used to protect Evidence content
+      EnableKeyRotation: true
+      PendingWindowInDays: 20
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+
+  KMSaliasEvidenceContent:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/ManualEvidenceProtection
+      TargetKeyId: !Ref KMSevidenceContent
+
+  ### Storage
+  S3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref paramBucketName
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !GetAtt KMSevidenceContent.Arn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ### Notifications
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "Audit Manager Auto Evidence Processes Notifications"
+      TopicName: "AuditManagerAutoEvidence"
+### Outputs
+
