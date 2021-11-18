@@ -10,7 +10,7 @@ Examples of this manual evidence include, but are not limited to:
 1. Change control records
 1. Regulatory process changes
 
-In a typical scenario, customers may want to perform additional actions after evidence has been uploaded. These actions could include tieing the evidence to a control in an assessment, running a task to analyze/validate the file, or performing additional processing on the file. 
+In a typical scenario, customers may want to perform additional actions after evidence has been uploaded. These actions could include associating the evidence to a control in an assessment, running a task to analyze/validate the file, or performing additional processing on the file. 
 
 This solution provides a sample integration method to connect a desired DevSecOps process with tools available in AWS Audit Manager. It assumes that you have already configured AWS Audit Manager and have created assessments.
 
@@ -50,19 +50,19 @@ curl --location --request POST 'https://<YOURAPIENDPOINT>.execute-api.<AWS REGIO
 
 1. This API uses an (`x-api-key`) to track usage
     1. The API key is used to track and control usage by clients
-    2. To truly secure this endpoint consider using IAM authentication described in a later section.
+    2. To truly secure this endpoint consider using IAM authentication  ( described in a later section) among other [documented methods](https://docs.aws.amazon.com/apigateway/latest/developerguide/rest-api-protect.html).
 1. The from post content:
     - AssessmentName : Name for the assessment in the Audit Manager GUI, `GxP21cfr11` as an example
     - ControlSetName : Display name for a control set within an assessment, `General requirements` as an example
-    - ControlIdName : A particular control within a control set `11.100(a)` as an examples
+    - ControlIdName : A particular control within a control set, `11.100(a)` as an example
     - payload : file content
 
 
-The file contents will be placed in the S3 bucket in a folder that matches the assessment name, the file name is pre-pended with a UUID to prevent collisions. 
+The file content will be placed in the S3 bucket in a folder that matches the assessment name, the file name is pre-pended with a UUID to prevent collisions. 
 
 #### IAM Protect API Gateway
 
-You can additionally protect this solution by using AWS IAM authentication/authorization for invoking the API Gateway. This is enabled by a overriding the default parameters ( `paramUseIAMwithGateway`) at deployment time. You can read about this capability [here](https://aws.amazon.com/premiumsupport/knowledge-center/iam-authentication-api-gateway/) and [here](https://docs.aws.amazon.com/apigateway/latest/developerguide/permissions.html).  This solution also deploy an example managed policy to attach to roles/groups/users if needed. 
+You can additionally protect this solution by using AWS IAM authentication/authorization for invoking the API Gateway. This is enabled by a overriding the default value for the parameter `paramUseIAMwithGateway` at deployment time. You can read about this capability [here](https://aws.amazon.com/premiumsupport/knowledge-center/iam-authentication-api-gateway/) and [here](https://docs.aws.amazon.com/apigateway/latest/developerguide/permissions.html).  This solution also deploys an example managed policy to attach to roles/groups/users if needed. 
 
 ## Build and Deploy Sample Solution
 
@@ -94,7 +94,7 @@ sam build
 sam deploy --guided --parameter-overrides paramBucketName=[A unique none existent bucketname]
 ```
 
-The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts. For the prompts, use the region where AWS Audit Manager was configured. Use other default values. 
+The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts. For the prompts, use the region where AWS Audit Manager was configured. Provide a unique application name. Use default values otherwise.  
 
 To activate the IAM authentication feature for API gateway, override the default value with the following:
 ```
