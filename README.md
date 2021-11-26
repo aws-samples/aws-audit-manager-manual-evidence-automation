@@ -2,39 +2,32 @@
 
 ## Background 
 
-Organizations in regulated industries must balance regulatory compliance and audit processes with their accelerated software delivery capabilities. AWS Audit Manager supports this effort by automatically collecting evidence and enabling regular assessments of AWS Account configurations. Data can be automatically collected from AWS Config, AWS Security Hub, AWS CloudTrail and via API calls from AWS services. In addition to this automatically collected data, the assessments and their accompanying reports can be augmented with manually uploaded evidence.
+Organizations in regulated industries must balance regulatory compliance and audit processes with their accelerated software delivery capabilities. AWS Audit Manager supports this effort by automatically collecting evidence and enabling regular assessments of AWS Account configurations. Data can be automatically collected from AWS Config, AWS Security Hub, and AWS CloudTrail. In addition to this automatically collected data, the assessments and their accompanying reports can be augmented with manually uploaded *evidence*.
 
 Examples of this manual evidence include, but are not limited to:
 
 1. SDLC approval process documentation
 1. Change control records
-1. Regulatory process changes
+1. Regulatory process documentation
 
-In a typical scenario, customers may want to perform additional actions after evidence has been uploaded. These actions could include associating the evidence to a control in an assessment, running a task to analyze/validate the file, or performing additional processing on the file. 
-
-This solution provides a sample integration method to connect a desired DevSecOps process with tools available in AWS Audit Manager. It assumes that you have already configured AWS Audit Manager and have created assessments.
+This solution provides a means to automatatically connect a manual evidence generation process to AWS Audit Manager. It does this through the deployment of an API endpoint as a frontend to an example automation workflow that associates documentary evidence to an AWS Audit Manager Assessment. 
 
 
 ## How this Solution Works
 
-This sample solution uses AWS Step Functions to orchestrate updates to AWS Audit Manager.
+This solution creates an HTTPS API Endpoint which allows integration with other Software Delivery Life Cycle (SDLC) solutions,  IT service management (ITSM) products, and CTMS (Clinical Trial Management System) solutions to capture trial process change amendment documentation. In this solution’s current form, you can submit an evidence file payload along with the assessment and control details to the API and this solution will tie all the information together for the audit report.
 
-The AWS Step Function State Machine:
+The architecture is composed of the following components:
 
-![image of State Machine!](./docs/stepfunction.png)
+* An [Amazon API Gateway](https://aws.amazon.com/api-gateway/) endpoint and **API Key** 
+* An [AWS Lambda](https://aws.amazon.com/lambda/) function implementing the API 
+* An [AWS Step Function](https://aws.amazon.com/step-functions) Standard Workflow composed of various **AWS Lambda functions** that will update **Audit Manager Assessments**
+* An [Amazon S3](https://aws.amazon.com/s3/) Bucket where evidence is stored
+* An [AWS Key Management Service](https://aws.amazon.com/kms/) Key to encrypt evidence in S3
+* An [Amazon SNS](https://aws.amazon.com/sns/) Topic that can be subscribed to by third-party solutions for notifications
 
-- The state machine takes the following input:
-    - Assessment Name
-    - Control Set Name
-    - Control Name
-    - Valid S3 object path where additional evidence resides
 
-- If the control is found, the Step Function will update Audit Manager with the additional evidence
-- Sends a notification via Amazon Simple Notification Service
-    - Notification on Success or Failure
-    - Allows connecting to other systems
-
-This solution creates an HTTPS API Endpoint to allow integration with other Software Delivery Lifecycle solutions or ITSM products. The provided implementation can be extended to support various webhooks. 
+![image of Architecture!](./docs/EvidenceArchitecture.png)
 
 
 Example invocation for an assessment named `GxP21cfr11` via curl:  
@@ -51,7 +44,7 @@ curl --location --request POST 'https://<YOURAPIENDPOINT>.execute-api.<AWS REGIO
 1. This API uses an (`x-api-key`) to track usage
     1. The API key is used to track and control usage by clients
     2. To truly secure this endpoint consider using IAM authentication  ( described in a later section) among other [documented methods](https://docs.aws.amazon.com/apigateway/latest/developerguide/rest-api-protect.html).
-1. The from post content:
+1. The form post content:
     - AssessmentName : Name for the assessment in the Audit Manager GUI, `GxP21cfr11` as an example
     - ControlSetName : Display name for a control set within an assessment, `General requirements` as an example
     - ControlIdName : A particular control within a control set, `11.100(a)` as an example
@@ -60,7 +53,23 @@ curl --location --request POST 'https://<YOURAPIENDPOINT>.execute-api.<AWS REGIO
 
 The file content will be placed in the S3 bucket in a folder that matches the assessment name, the file name is pre-pended with a UUID to prevent collisions. 
 
-#### IAM Protect API Gateway
+
+### The AWS Step Function State Machine
+
+![image of State Machine!](./docs/stepfunction.png)
+
+- The state machine takes the following input:
+    - Assessment Name
+    - Control Set Name
+    - Control Name
+    - Valid S3 object path where additional evidence resides
+
+- If the control is found, the Step Function will update Audit Manager with the additional evidence
+- Sends a notification via Amazon Simple Notification Service
+    - Notification on Success or Failure
+    - Allows connecting to other systems
+
+### IAM Protect API Gateway
 
 You can additionally protect this solution by using AWS IAM authentication/authorization for invoking the API Gateway. This is enabled by a overriding the default value for the parameter `paramUseIAMwithGateway` at deployment time. You can read about this capability [here](https://aws.amazon.com/premiumsupport/knowledge-center/iam-authentication-api-gateway/) and [here](https://docs.aws.amazon.com/apigateway/latest/developerguide/permissions.html).  This solution also deploys an example managed policy to attach to roles/groups/users if needed. 
 
@@ -87,7 +96,11 @@ To use the AWS SAM CLI, you need the following tools:
 
 ### First Time Build and Deploy
 
-To build and deploy your application for the first time, run the following in your AWS SAM shell. **You will need a unique S3 Bucketname. This solution will create the bucket**
+To build and deploy your application for the first time:
+
+1. `git clone` this repo
+1. ` cd ` into the cloned repo folder
+1.  Run the following in your AWS SAM shell. **You will need a unique S3 Bucketname. This solution will create the bucket**
 
 ```
 sam build
