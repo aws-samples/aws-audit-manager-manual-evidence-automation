@@ -4,13 +4,13 @@
     "version": "0.0.1",
     "private": true,
     "dependencies": {
-        "aws-sdk": "^3.40.0",
+        "aws-sdk": "^2.1354.0",
         "lambda-multipart-parser":"^1.0.1",
         "lambda-multipart":"^1.0.2",
         "uuid": "^8.3.2"
     },
     "devDependencies": {
-        "aws-sdk": "^2.815.0",
+        "aws-sdk": "^2.1354.0",
         "jest": "^26.6.3"
     },
     "scripts": {
